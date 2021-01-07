@@ -52,7 +52,7 @@ async function addIndexHtmlIfNeeded(dir) {
     await git.cmd('add', indexHtml);
     console.log('Created default index.html at', indexHtml);
 }
-function biggerIsBetter(tool) {
+function biggerIsBetter(tool, result) {
     switch (tool) {
         case 'cargo':
             return false;
@@ -66,6 +66,13 @@ function biggerIsBetter(tool) {
             return false;
         case 'catch2':
             return false;
+        case 'ndjson': {
+            const { biggerIsBetter } = result;
+            if (biggerIsBetter === undefined) {
+                throw new Error('ndjson is assumed to have a biggerIsBetter field.');
+            }
+            return biggerIsBetter;
+        }
     }
 }
 function findAlerts(curSuite, prevSuite, threshold) {
@@ -77,7 +84,7 @@ function findAlerts(curSuite, prevSuite, threshold) {
             core.debug(`Skipped because benchmark '${current.name}' is not found in previous benchmarks`);
             continue;
         }
-        const ratio = biggerIsBetter(curSuite.tool)
+        const ratio = biggerIsBetter(curSuite.tool, current)
             ? prev.value / current.value // e.g. current=100, prev=200
             : current.value / prev.value; // e.g. current=200, prev=100
         if (ratio > threshold) {
@@ -132,7 +139,7 @@ function buildComment(benchName, curSuite, prevSuite) {
         let line;
         const prev = prevSuite.benches.find(i => i.name === current.name);
         if (prev) {
-            const ratio = biggerIsBetter(curSuite.tool)
+            const ratio = biggerIsBetter(curSuite.tool, current)
                 ? prev.value / current.value // e.g. current=100, prev=200
                 : current.value / prev.value;
             line = `| \`${current.name}\` | ${strVal(current)} | ${strVal(prev)} | \`${floatStr(ratio)}\` |`;

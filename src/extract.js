@@ -249,6 +249,63 @@ function extractCatch2Result(output) {
     }
     return ret;
 }
+function ensureString(json, key) {
+    const value = json[key];
+    if (typeof value === 'string') {
+        return value;
+    }
+    throw new Error(`Expected the JSON to have a string at the key "${key}"`);
+}
+function ensureNumber(json, key) {
+    const value = json[key];
+    if (typeof value === 'number') {
+        return value;
+    }
+    throw new Error(`Expected the JSON to have a number at the key "${key}"`);
+}
+/**
+ * Process results that use the internal format for this tool, but using newline
+ * delimited json. This format is friendly for appending results onto a file.
+ *
+ * http://ndjson.org/
+ */
+function extractNdjsonResult(output) {
+    // Split the newlines, process the json, and then validate the fields.
+    return output
+        .split(/\r?\n/g)
+        .filter(n => n)
+        .map(line => {
+        // Process the JSON.
+        let json;
+        try {
+            json = JSON.parse(line);
+        }
+        catch (err) {
+            throw new Error(`A line from the ndjson file could not be parsed.\nLine: ${line}\nError: ${err.message}`);
+        }
+        if (!json || typeof json !== 'object') {
+            throw new Error(`A line form the ndjson was not an object. Line: ${line}`);
+        }
+        const biggerIsBetter = json.biggerIsBetter;
+        if (typeof biggerIsBetter !== 'boolean') {
+            throw new Error(`ndjson output must include a "biggerIsBetter" field as it cannot be inferred from the test suite.`);
+        }
+        // Validate the data provided in the entry.
+        const result = {
+            name: ensureString(json, 'name'),
+            value: ensureNumber(json, 'value'),
+            unit: ensureString(json, 'unit'),
+            biggerIsBetter,
+        };
+        if ('range' in json) {
+            result.range = ensureString(json, 'range');
+        }
+        if ('extra' in json) {
+            result.extra = ensureString(json, 'extra');
+        }
+        return result;
+    });
+}
 async function extractResult(config) {
     const output = await fs_1.promises.readFile(config.outputFilePath, 'utf8');
     const { tool } = config;
@@ -271,6 +328,9 @@ async function extractResult(config) {
             break;
         case 'catch2':
             benches = extractCatch2Result(output);
+            break;
+        case 'ndjson':
+            benches = extractNdjsonResult(output);
             break;
         default:
             throw new Error(`FATAL: Unexpected tool: '${tool}'`);
